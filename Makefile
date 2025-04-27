@@ -17,11 +17,12 @@ BINARY_NAME:=image_guard
 
 
 build:
-	@CGO_ENABLED=0 $(GOBUILD) $(StripGoPath) -o $(BINARY_DIR)/$(BINARY_NAME)
-	@#upx $(BINARY_DIR)/$(BINARY_NAME)
+	@CGO_ENABLED=0 $(GOBUILD) $(StripGoPath) -ldflags $(FLAG) -o $(BINARY_DIR)/$(BINARY_NAME)
+
 # linux
 build-linux:
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(StripGoPath) -ldflags $(FLAG) -o $(BINARY_DIR)/$(BINARY_NAME)-$(VERSION)-linux
+
 
 #mac
 build-darwin:
@@ -31,7 +32,6 @@ build-darwin:
 # 全平台
 build-all:
 	make build-linux
-	make build-darwin
 	#cd bin&&tar zcf ${BINARY_NAME}.tgz ${BINARY_NAME}
 
 check:

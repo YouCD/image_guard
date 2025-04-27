@@ -7,7 +7,6 @@ import (
 	"github.com/youcd/toolkit/log"
 	"strings"
 	"sync"
-	"time"
 )
 
 var (
@@ -25,126 +24,88 @@ func Pipe(containers []string) {
 		}
 	})
 
-	listContainerJSON := getContainerJSONByName(ctx, guard.containers...)
-	if len(listContainerJSON) == 0 {
-		log.Errorf("no containerJSON found")
+	containerList := getContainerJSONByName(ctx, guard.containers...)
+	if len(containerList) == 0 {
+		log.Error("no containers found")
 		return
 	}
 
-	//	1. 获取 当前容器对应 镜的 的 Created 时间
-	var containerInfoList []*containerInfo
-	for _, containerJSON := range listContainerJSON {
-		createTime, repoTag, err := guard.ImageCreateTimeAndRepoTag(ctx, containerJSON)
+	var containerInfos []*containerInfo
+	for _, c := range containerList {
+		createTime, repoTag, err := guard.ImageCreateTimeAndRepoTag(ctx, c)
 		if err != nil {
-			log.Warn("get image create time error: %v", err)
+			log.Warnf("get image create time error: %v", err)
 			continue
 		}
-		containerInfoList = append(containerInfoList, &containerInfo{
-			Name: strings.TrimPrefix(containerJSON.Name, "/"),
+		containerInfos = append(containerInfos, &containerInfo{
+			Name: strings.TrimPrefix(c.Name, "/"),
 			CurrentImage: &imageInfo{
 				Repository:  repoTag,
 				ImageCreate: createTime,
-				ImageID:     containerJSON.Image,
+				ImageID:     c.Image,
 			},
 		})
 	}
 
-	//  2. 获取 registry-mirrors
 	mirrors, err := guard.ListRegistryMirrors(ctx)
 	if err != nil {
 		log.Errorf("get registry mirrors error: %v", err)
 		return
 	}
-	for _, mirror := range mirrors {
-		log.Debugf("registry mirror: %s", mirror)
-		for _, info := range containerInfoList {
-			info.RegistryMirrors = append(info.RegistryMirrors, mirror)
+	for _, info := range containerInfos {
+		info.RegistryMirrors = append(info.RegistryMirrors, mirrors...)
+	}
+
+	for _, info := range containerInfos {
+		if err := guard.RegistryMirrorInspect(info); err != nil {
+			log.Errorf("registry inspect error: %v", err)
 		}
 	}
 
-	//  3. 获取 registry 中对应镜像的 Created 时间
-	for _, info := range containerInfoList {
-
-		if err := guard.RegistryInspect(info); err != nil {
-			log.Errorf("get registry inspect error: %v", err)
-			continue
-		}
-	}
-	updateImageMap := map[string]*imageInfo{}
-	for _, info := range containerInfoList {
-		var check bool
-		for _, image := range info.RemoteImages {
-
-			if info.CurrentImage.ImageID == image.ImageID {
-				log.Infof("No need to update the image, container: %s", info.Name)
+	updateMap := make(map[string]*imageInfo)
+	for _, info := range containerInfos {
+		for _, img := range info.RemoteImages {
+			if info.CurrentImage.ImageID == img.ImageID {
+				log.Infow("checkImageID", "container", info.Name, "ImageID", img.ImageID)
 				break
 			}
-			// 判断镜像是否比当前镜像更新
-			if image.ImageCreate.After(info.CurrentImage.ImageCreate) {
-				if c, ok := updateImageMap[info.Name]; ok {
-					// 如果已有记录，再比较时间，保留时间更新的
-					if image.ImageCreate.After(c.ImageCreate) {
-						updateImageMap[info.Name] = image
-						log.Debugf("add update container: %s, ref: %s, create: %s", info.Name, image.Repository, image.ImageCreate.Format(time.DateTime))
-					}
-				} else {
-					// 没有记录，直接放入 map
-					updateImageMap[info.Name] = image
-					log.Debugf("add update container: %s, ref: %s, create: %s", info.Name, image.Repository, image.ImageCreate.Format(time.DateTime))
+			if img.ImageCreate.After(info.CurrentImage.ImageCreate) {
+				if curr, exists := updateMap[info.Name]; !exists || img.ImageCreate.After(curr.ImageCreate) {
+					updateMap[info.Name] = img
+					log.Debugf("found newer image: %s -> %s", info.Name, img.Repository)
 				}
-
-				break // 跳出 RemoteImages 循环
-			} else {
-				if !check {
-					log.Infof("No need to update the image, container: %s", info.Name)
-				} else {
-					continue
-				}
-				check = true
+				break
 			}
 		}
 	}
 
-	for name, image := range updateImageMap {
-		newImage := image.Repository
-		newTagFunc := func(string) string {
-			log.Infof("update container:%s,ref:%s", name, image.Repository)
-			newImage = fmt.Sprintf("%s:%s", image.Reference.Context().RepositoryStr(), image.Reference.Identifier())
-			return newImage
-		}
-		//  5. 如果更新 就拉取最新的镜像
-		if err = guard.ImagePull(ctx, image.Repository, newTagFunc); err != nil {
-			log.Errorf("pull image error: %v", err)
-			continue
-		}
-		log.Infof("update container:%s -> %s, created: %s", name, newImage, image.ImageCreate.Format(time.DateTime))
-		//  6. 重新创建新的容器
-		if err := guard.UpdateContainerImage(ctx, name, newImage); err != nil {
-			log.Errorf("update image error: %v", err)
-			continue
-		}
+	var wg sync.WaitGroup
+	for name, img := range updateMap {
+		wg.Add(1)
+		go func(name string, img *imageInfo) {
+			defer wg.Done()
+
+			newImage := fmt.Sprintf("%s:%s", img.Reference.Context().RepositoryStr(), img.Reference.Identifier())
+			log.Infof("updating container: %s -> %s", name, newImage)
+
+			if err := guard.ImagePull(ctx, img.Repository, func(_ string) string { return newImage }); err != nil {
+				log.Errorf("pull image error: %v", err)
+				return
+			}
+			if err := guard.UpdateContainerImage(ctx, name, newImage); err != nil {
+				log.Errorf("update container error: %v", err)
+			}
+		}(name, img)
 	}
-	// 7. 其他操作
-	//		清理多余的镜像
+	wg.Wait()
+
+	// todo: clean up unused images
 }
+
 func getContainerJSONByName(ctx context.Context, names ...string) []types.ContainerJSON {
 	var list []types.ContainerJSON
 	for _, name := range names {
 		inspect, err := guard.DockerCLIClient.Client().ContainerInspect(ctx, name)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		list = append(list, inspect)
-	}
-
-	return list
-}
-
-func getFromArgs(ctx context.Context, containers ...string) []types.ContainerJSON {
-	var list []types.ContainerJSON
-	for _, s := range containers {
-		inspect, err := guard.DockerCLIClient.Client().ContainerInspect(ctx, s)
 		if err != nil {
 			log.Error(err)
 			continue

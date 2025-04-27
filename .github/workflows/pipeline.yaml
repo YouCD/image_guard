@@ -1,0 +1,32 @@
+name: image_guard pipeline
+permissions:
+  contents: write
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.23.1
+      - name: fetch upx
+        run: sh build.sh
+      - name: Build
+        run: make build-all
+      - name: Upload binary file
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: image_guard
+          path: bin/*
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with: # 将下述可执行文件 release 上去
+          files: |
+            bin/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

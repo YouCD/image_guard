@@ -5,6 +5,8 @@ go 1.23.1
 require (
 	github.com/docker/docker v26.1.3+incompatible
 	github.com/google/go-containerregistry v0.19.1
+	github.com/robfig/cron/v3 v3.0.1
+	github.com/spf13/cobra v1.8.1
 	github.com/youcd/toolkit v0.0.0-20250423100133-2111869f1ce0
 )
 
@@ -131,13 +133,11 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.4.0 // indirect
 	github.com/serialx/hashring v0.0.0-20200727003509-22c0c7ab6b1b // indirect
 	github.com/shibumi/go-pathspec v1.3.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
-	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/theupdateframework/notary v0.7.0 // indirect

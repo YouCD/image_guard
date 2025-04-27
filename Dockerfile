@@ -1,10 +1,10 @@
-FROM golang:1.23.1-bullseye as builder
+FROM golang:1.23.1-bullseye AS builder
 WORKDIR /movieSpider
 ENV GOPROXY https://goproxy.cn,direct
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app/image_guard
 
-FROM  hairyhenderson/upx as upx
+FROM  hairyhenderson/upx AS upx
 COPY --from=builder /app/image_guard /app/image_guard
 RUN upx /app/image_guard
 

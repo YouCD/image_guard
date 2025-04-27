@@ -19,12 +19,11 @@ func init() {
 	log.Init(true)
 	log.SetLogLevel("info")
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().StringVarP(&schedule, "schedule", "s", "*/1 * * * *", "cron schedule")
+	rootCmd.PersistentFlags().StringVarP(&schedule, "schedule", "s", "0 */1 * * *", "cron schedule")
 	rootCmd.PersistentFlags().StringSliceVarP(&containers, "containers", "c", containers, "watch containers")
 }
 
 // rootCmd represents the base command when called without any subcommands
-//
 var rootCmd = &cobra.Command{
 	Use:   Name,
 	Short: Name + "watch container image update",
