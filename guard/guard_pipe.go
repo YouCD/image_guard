@@ -58,7 +58,7 @@ func Pipe(containers []string) {
 
 	for _, info := range containerInfos {
 		if err := guard.RegistryMirrorInspect(info); err != nil {
-			log.Errorf("registry inspect error: %v", err)
+			log.Debugf("registry inspect error: %v", err)
 		}
 	}
 
@@ -86,8 +86,7 @@ func Pipe(containers []string) {
 			defer wg.Done()
 
 			newImage := fmt.Sprintf("%s:%s", img.Reference.Context().RepositoryStr(), img.Reference.Identifier())
-			log.Infof("updating container: %s -> %s", name, newImage)
-
+			log.Infof("updating container: %s to release time:  %s", name, img.ImageCreate.Format("2006-01-02 15:04:05"))
 			if err := guard.ImagePull(ctx, img.Repository, func(_ string) string { return newImage }); err != nil {
 				log.Errorf("pull image error: %v", err)
 				return

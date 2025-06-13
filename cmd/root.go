@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/youcd/toolkit/log"
 	"image_guard/guard"
@@ -30,6 +31,7 @@ var rootCmd = &cobra.Command{
 
 	Run: func(_ *cobra.Command, _ []string) {
 		guard.CronScheduling(schedule, containers)
+		fmt.Println("image_guard is running...")
 		select {}
 	},
 }

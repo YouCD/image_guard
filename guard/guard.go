@@ -2,8 +2,11 @@ package guard
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -36,6 +39,25 @@ type (
 	Guard struct {
 		*docker.Docker
 		containers []string
+	}
+)
+
+var (
+	defaultTransport = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		MaxIdleConnsPerHost:   50,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
 	}
 )
 
@@ -137,7 +159,7 @@ func (g *Guard) RegistryMirrorInspect(c *containerInfo) error {
 
 	var remoteErr error
 	for _, ref := range refs {
-		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		img, err := remote.Image(ref, remote.WithAuthFromKeychain(authn.DefaultKeychain), remote.WithTransport(defaultTransport))
 		if err != nil {
 			if errors.Is(err, ErrGetRemoteImage) {
 				remoteErr = ErrGetRemoteImage
@@ -160,6 +182,7 @@ func (g *Guard) RegistryMirrorInspect(c *containerInfo) error {
 			Reference:   ref,
 			ImageID:     id.String(),
 		})
+		log.Infow("RegistryMirrorInspect", "container", c.Name, "ref", ref.Context(), "image", ref.String())
 	}
 	if remoteErr != nil {
 		errs = append(errs, remoteErr)
@@ -180,7 +203,10 @@ func newRef(mirror, repoTag string) (name.Reference, error) {
 		if err != nil {
 			return nil, err
 		}
-		return name.ParseReference(fmt.Sprintf("%s/%s", u.Host, repoTag))
+		if u.Scheme == "http" {
+			return name.NewTag(fmt.Sprintf("%s/%s", u.Host, repoTag), name.Insecure)
+		}
+		return name.NewTag(fmt.Sprintf("%s/%s", u.Host, repoTag))
 	}
 	return ref, nil
 }
